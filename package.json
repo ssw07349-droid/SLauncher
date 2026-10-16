@@ -1,0 +1,21 @@
+{
+  "name": "slauncher",
+  "version": "1.0.0",
+  "description": "SLauncher",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "22.3.27",
+    "electron-builder": "24.13.3"
+  },
+  "build": {
+    "appId": "uz.sardor.slauncher",
+    "productName": "SLauncher",
+    "files": ["main.js", "preload.js", "launcher.html"],
+    "win": { "target": "portable" },
+    "compression": "maximum"
+  }
+}

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SLauncher</title>
+<style>
+:root{--bg:#0b1020;--glass:rgba(255,255,255,.09);--glass2:rgba(255,255,255,.16);--tx:#f2f5ff;--mut:#aab4d4;--ac:#6ea8ff}
+@media (prefers-color-scheme: dark){:root{--bg:#0b1020}}
+*{box-sizing:border-box;margin:0;padding:0;user-select:none;-webkit-user-select:none}
+html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font-family:"Segoe UI",system-ui,Arial,sans-serif;cursor:default}
+#wall,#vid{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0}
+#vid{display:none}
+#shade{position:fixed;inset:0;z-index:1;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 40%,rgba(0,0,0,.45))}
+main{position:relative;z-index:2;height:100%;display:flex;flex-direction:column;align-items:center;padding:5vh 4vw 3vh;padding-top:max(5vh,env(safe-area-inset-top,0px))}
+#clock{font-size:clamp(56px,10vw,120px);font-weight:200;letter-spacing:2px;line-height:1;text-shadow:0 4px 30px rgba(0,0,0,.4)}
+#date{margin-top:8px;color:var(--mut);font-size:clamp(14px,2vw,22px)}
+#search{margin-top:3vh;width:min(560px,90%);padding:14px 22px;border-radius:30px;border:1px solid var(--glass2);background:var(--glass);color:var(--tx);font-size:17px;outline:none;backdrop-filter:blur(8px);user-select:text;-webkit-user-select:text}
+#search:focus{border-color:var(--ac)}
+#grid{margin-top:4vh;width:min(980px,100%);display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:18px;overflow-y:auto;padding:6px;flex:1;align-content:start}
+#grid::-webkit-scrollbar{width:0}
+.app{display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 8px;border-radius:20px;background:var(--glass);border:1px solid transparent;cursor:pointer;transition:transform .15s,background .15s,border-color .15s;backdrop-filter:blur(6px)}
+.app:hover,.app:focus{transform:translateY(-4px) scale(1.04);background:var(--glass2);border-color:var(--ac);outline:none}
+.app .ic{font-size:42px;line-height:1;height:42px}
+.app img{width:40px;height:40px;object-fit:contain}
+.app .nm{font-size:14px;text-align:center}
+#dock{position:fixed;z-index:3;right:18px;bottom:calc(18px + env(safe-area-inset-bottom,0px));display:flex;gap:10px}
+.btn{width:46px;height:46px;border-radius:50%;border:1px solid var(--glass2);background:var(--glass);color:var(--tx);font-size:20px;cursor:pointer;backdrop-filter:blur(8px)}
+.btn:hover{background:var(--glass2)}
+#hint{position:fixed;z-index:3;left:18px;bottom:calc(22px + env(safe-area-inset-bottom,0px));font-size:12px;color:var(--mut);opacity:.8}
+#panel{position:fixed;z-index:4;right:18px;bottom:76px;width:290px;padding:18px;border-radius:20px;background:rgba(14,20,40,.88);border:1px solid var(--glass2);backdrop-filter:blur(14px);display:none}
+#panel.on{display:block}
+#panel h3{font-size:15px;margin-bottom:12px;font-weight:600}
+#panel label{display:block;font-size:13px;color:var(--mut);margin:12px 0 6px}
+#panel select,#panel input[type=file]{width:100%;padding:8px;border-radius:10px;border:1px solid var(--glass2);background:rgba(255,255,255,.07);color:var(--tx);font-size:13px}
+#panel select option{color:#000}
+.row{display:flex;justify-content:space-between;align-items:center;font-size:13px;margin-top:12px}
+#toast{position:fixed;z-index:5;top:20px;left:50%;transform:translateX(-50%);padding:10px 20px;border-radius:20px;background:rgba(14,20,40,.9);border:1px solid var(--glass2);font-size:14px;opacity:0;transition:opacity .25s;pointer-events:none}
+#toast.on{opacity:1}
+</style>
+</head>
+<body>
+<canvas id="wall"></canvas>
+<video id="vid" muted loop playsinline></video>
+<div id="shade"></div>
+
+<main>
+  <div id="clock">00:00</div>
+  <div id="date"></div>
+  <input id="search" type="text" placeholder="Ilova qidirish..." autocomplete="off">
+  <div id="grid"></div>
+</main>
+
+<div id="hint">SLauncher · Chiqish: Alt + F4</div>
+<div id="dock"><button class="btn" id="gear" title="Sozlamalar">⚙️</button></div>
+
+<div id="panel">
+  <h3>Sozlamalar</h3>
+  <label>Jonli fon</label>
+  <select id="wsel">
+    <option value="aurora">Aurora (gradient)</option>
+    <option value="stars">Yulduzlar</option>
+    <option value="waves">To'lqinlar</option>
+    <option value="static">Statik (RAM tejash)</option>
+  </select>
+  <label>Video fon (mp4/webm fayl)</label>
+  <input type="file" id="vfile" accept="video/*">
+  <div class="row"><span>Tejamkor rejim (20 FPS)</span><input type="checkbox" id="eco" checked></div>
+  <div class="row"><span>Video fonni o'chirish</span><button class="btn" id="vclear" style="width:34px;height:34px;font-size:14px">✕</button></div>
+</div>
+<div id="toast"></div>
+
+<script>
+(function(){
+"use strict";
+// ---------- Ilovalar ro'yxati (.exe da haqiqiy yo'llar bilan almashtiriladi) ----------
+var APPS=[
+ {n:"Brauzer",i:"🌐",cmd:"browser"},{n:"Fayllar",i:"📁",cmd:"explorer"},
+ {n:"Musiqa",i:"🎵",cmd:"music"},{n:"Videolar",i:"🎬",cmd:"video"},
+ {n:"O'yinlar",i:"🎮",cmd:"games"},{n:"Mini Futbol",i:"⚽",cmd:"minifutbol"},
+ {n:"SCG Mashina",i:"🚗",cmd:"scg"},{n:"Hisoblagich",i:"🧮",cmd:"calc"},
+ {n:"Daftar",i:"📝",cmd:"notepad"},{n:"Rasmlar",i:"🖼️",cmd:"photos"},
+ {n:"Boshqaruv",i:"🛠️",cmd:"control"},{n:"Terminal",i:"⌨️",cmd:"cmd"}
+];
+var $=function(id){return document.getElementById(id)};
+var toastT;
+function toast(t){var e=$("toast");e.textContent=t;e.className="on";clearTimeout(toastT);toastT=setTimeout(function(){e.className=""},1800)}
+function store(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
+
+// ---------- Grid ----------
+var grid=$("grid");
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function render(q){
+  q=(q||"").toLowerCase();var h="";
+  APPS.forEach(function(a,ix){
+    if(q&&a.n.toLowerCase().indexOf(q)<0)return;
+    h+='<div class="app" tabindex="0" data-i="'+ix+'"><div class="ic">'+(a.img?'<img src="'+a.img+'">':a.i)+'</div><div class="nm">'+esc(a.n)+'</div></div>';
+  });
+  grid.innerHTML=h||'<div style="grid-column:1/-1;text-align:center;color:var(--mut)">Hech narsa topilmadi</div>';
+}
+function launch(ix){
+  var a=APPS[ix];if(!a)return;
+  if(window.native&&window.native.run){
+    if(a.cmd==="__add"){window.native.add().then(function(ok){if(ok)loadApps()});return}
+    window.native.run(a.path);
+  }else{toast(a.n+" — bu namuna, haqiqiy ochish .exe da ishlaydi")}
+}
+grid.addEventListener("click",function(e){var t=e.target.closest(".app");if(t)launch(+t.dataset.i)});
+grid.addEventListener("keydown",function(e){if(e.key==="Enter"){var t=e.target.closest(".app");if(t)launch(+t.dataset.i)}});
+$("search").addEventListener("input",function(){render(this.value)});
+$("search").addEventListener("keydown",function(e){if(e.key==="Enter"){var f=grid.querySelector(".app");if(f)launch(+f.dataset.i)}});
+render();
+
+// ---------- Kompyuterdagi haqiqiy ilovalar (.exe da) ----------
+function loadApps(){
+  if(!(window.native&&window.native.list))return;
+  window.native.list().then(function(l){
+    APPS=l.map(function(x){return{n:x.n,i:"📦",path:x.path}});
+    APPS.push({n:"Ilova qo'shish",i:"➕",cmd:"__add"});
+    render($("search").value);
+    APPS.forEach(function(a,ix){
+      if(!a.path)return;
+      window.native.icon(a.path).then(function(u){
+        if(!u)return;a.img=u;
+        var e=grid.querySelector('.app[data-i="'+ix+'"] .ic');
+        if(e)e.innerHTML='<img src="'+u+'">';
+      });
+    });
+  });
+}
+loadApps();
+
+// ---------- Soat ----------
+var D=["Yakshanba","Dushanba","Seshanba","Chorshanba","Payshanba","Juma","Shanba"];
+var M=["yanvar","fevral","mart","aprel","may","iyun","iyul","avgust","sentabr","oktabr","noyabr","dekabr"];
+function tick(){var d=new Date();
+  $("clock").textContent=("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2);
+  $("date").textContent=D[d.getDay()]+", "+d.getDate()+"-"+M[d.getMonth()]+" "+d.getFullYear();}
+tick();setInterval(tick,10000);
+
+// ---------- To'liq ekran (sichqoncha/klaviatura bosilganda) ----------
+function fs(){var el=document.documentElement;if(!document.fullscreenElement&&el.requestFullscreen){el.requestFullscreen().catch(function(){})}}
+document.addEventListener("click",fs,{once:true});
+document.addEventListener("keydown",fs,{once:true});
+document.addEventListener("contextmenu",function(e){e.preventDefault()});
+
+// ---------- Jonli fon (yengil canvas) ----------
+var cv=$("wall"),cx=cv.getContext("2d",{alpha:false}),W=0,H=0,mode=store("wall")||"aurora",eco=store("eco")!=="0";
+var stars=[],t0=0,last=0,raf=0;
+function size(){var s=eco?.5:.75;W=cv.width=Math.max(320,Math.floor(innerWidth*s));H=cv.height=Math.max(180,Math.floor(innerHeight*s));initStars()}
+function initStars(){stars=[];for(var i=0;i<(eco?70:130);i++)stars.push({x:Math.random()*W,y:Math.random()*H,z:Math.random()*.9+.1})}
+function aurora(t){
+  var g=cx.createLinearGradient(0,0,W,H);
+  g.addColorStop(0,"hsl("+(220+Math.sin(t/9)*25)+",70%,10%)");
+  g.addColorStop(1,"hsl("+(270+Math.cos(t/11)*30)+",65%,14%)");
+  cx.fillStyle=g;cx.fillRect(0,0,W,H);
+  for(var i=0;i<4;i++){
+    var x=W*(.5+.4*Math.sin(t/(6+i*2)+i*1.7)),y=H*(.5+.35*Math.cos(t/(7+i*1.5)+i));
+    var r=Math.max(W,H)*(.35+.05*i);
+    var rg=cx.createRadialGradient(x,y,0,x,y,r);
+    var h=(180+i*55+t*6)%360;
+    rg.addColorStop(0,"hsla("+h+",85%,55%,.38)");rg.addColorStop(1,"hsla("+h+",85%,55%,0)");
+    cx.fillStyle=rg;cx.fillRect(0,0,W,H);
+  }
+}
+function starsDraw(t,dt){
+  cx.fillStyle="#050816";cx.fillRect(0,0,W,H);
+  for(var i=0;i<stars.length;i++){var s=stars[i];
+    s.x-=s.z*dt*30;if(s.x<0){s.x=W;s.y=Math.random()*H}
+    cx.fillStyle="rgba(255,255,255,"+(.35+s.z*.65)+")";
+    var r=s.z*1.8+.4;cx.fillRect(s.x,s.y,r,r);}
+}
+function waves(t){
+  var g=cx.createLinearGradient(0,0,0,H);g.addColorStop(0,"#0a1a3a");g.addColorStop(1,"#08243a");
+  cx.fillStyle=g;cx.fillRect(0,0,W,H);
+  for(var k=0;k<4;k++){
+    cx.beginPath();cx.moveTo(0,H);
+    for(var x=0;x<=W;x+=12){cx.lineTo(x,H*(.55+k*.1)+Math.sin(x/(70+k*25)+t*(.6+k*.2)+k)*H*.04)}
+    cx.lineTo(W,H);cx.closePath();
+    cx.fillStyle="hsla("+(200+k*12)+",75%,"+(35+k*6)+"%,.28)";cx.fill();
+  }
+}
+function staticDraw(){var g=cx.createLinearGradient(0,0,W,H);g.addColorStop(0,"#0d1530");g.addColorStop(1,"#2a1650");cx.fillStyle=g;cx.fillRect(0,0,W,H)}
+function loop(now){
+  raf=requestAnimationFrame(loop);
+  var iv=1000/(eco?20:30);
+  if(now-last<iv)return;
+  var dt=Math.min((now-last)/1000,.1);last=now;t0+=dt;
+  if(mode==="aurora")aurora(t0);else if(mode==="stars")starsDraw(t0,dt);else if(mode==="waves")waves(t0);
+}
+function start(){cancelAnimationFrame(raf);if(mode==="static"||videoOn){staticDraw();return}raf=requestAnimationFrame(loop)}
+document.addEventListener("visibilitychange",function(){if(document.hidden)cancelAnimationFrame(raf);else start()});
+addEventListener("resize",function(){size();start()});
+
+// ---------- Video fon ----------
+var vid=$("vid"),videoOn=false,vurl=null;
+$("vfile").addEventListener("change",function(){
+  var f=this.files&&this.files[0];if(!f)return;
+  if(vurl)URL.revokeObjectURL(vurl);
+  vurl=URL.createObjectURL(f);vid.src=vurl;vid.style.display="block";cv.style.display="none";videoOn=true;
+  vid.play().catch(function(){});start();toast("Video fon qo'yildi");
+});
+$("vclear").addEventListener("click",function(){
+  vid.pause();vid.removeAttribute("src");vid.load();vid.style.display="none";cv.style.display="block";
+  if(vurl){URL.revokeObjectURL(vurl);vurl=null}videoOn=false;start();toast("Video fon o'chirildi");
+});
+
+// ---------- Sozlamalar ----------
+$("wsel").value=mode;$("eco").checked=eco;
+$("wsel").addEventListener("change",function(){mode=this.value;store("wall",mode);start()});
+$("eco").addEventListener("change",function(){eco=this.checked;store("eco",eco?"1":"0");size();start()});
+$("gear").addEventListener("click",function(e){e.stopPropagation();$("panel").classList.toggle("on")});
+document.addEventListener("mousedown",function(e){var p=$("panel");if(p.classList.contains("on")&&!p.contains(e.target)&&e.target.id!=="gear")p.classList.remove("on")});
+
+size();start();
+})();
+</script>
+</body>
+</html>
